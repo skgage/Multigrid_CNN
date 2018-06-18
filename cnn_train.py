@@ -14,7 +14,6 @@ import numpy as np
 import math
 import mg_system_data
 import matplotlib.pyplot as plt
-import hessian_comp
 tf.reset_default_graph()
 #-----------------------------------------------------
 #-----------------------------------------------------
