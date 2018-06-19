@@ -18,15 +18,15 @@ tf.reset_default_graph()
 #-----------------------------------------------------
 #-----------------------------------------------------
 
-
+#WORTH CLIPPING X AND INVERSE VALUES?
 
 #-------------Global Variables ----------------------
-learning_rate = 1e-10
-level = 7
+learning_rate = 1e-8
+level = 9
 level_prime = 0
-batch_size = 16
-num_data = 256
-gridsize =  256
+batch_size = 100
+num_data= 500
+gridsize =  1024
 epoch_num = 10
 num_batch = 1
 dim = 1 #number of dimensions 
@@ -44,10 +44,13 @@ def conv_restrict(input_tensor, level, level_prime):
     #size = tf.shape(input_tensor)[2]
     a  = tf.gather(input_tensor, [size-1], axis=2)
     input_tensor = tf.concat([a,input_tensor], axis=2)
-    init = tf.constant(np.random.normal(mean, sigma, size=(1,3,1,1)),dtype=tf.float32)
+    #init = tf.constant(np.random.normal(mean, sigma, size=(1,3,1,1)),dtype=tf.float32)
     #init = np.random.normal(mean, sigma, size=(1,3,1,1))
     #weights = tf.get_variable(name='R{}'.format(level),shape=[1,3,1,1], initializer=init) 
-    weights = tf.get_variable(name='R{}'.format(level),initializer=init, trainable=True) 
+    b = sigma*np.random.rand()+0.5
+    a = tf.Variable(b, name='Re{}'.format(level),trainable=True)
+    init = tf.reshape([a, 1, a], [1,3,1,1])
+    weights = tf.get_variable(name='R{}'.format(level),initializer=init, trainable=False) 
     conv = tf.nn.conv2d(input_tensor, weights, strides=[1,1,2,1], padding="VALID")
     conv = tf.reshape(conv, [batch_size,1, int(size/2), 1])
     return conv
@@ -57,8 +60,11 @@ def conv_prolong(input_tensor, level, level_prime):
     batch_size = tf.shape(input_tensor)[0]
     size = int(gridsize/(2**level_prime))
     #size = tf.shape(input_tensor)[2]
-    init = tf.constant(np.random.normal(mean, sigma, size=(1,3,1,1)),dtype=tf.float32)
-    weights = tf.get_variable(name = 'P{}'.format(level), initializer=init, trainable=True)  
+    b = sigma*np.random.rand()+0.5
+    a = tf.Variable(b, name='Pr{}'.format(level),trainable=True)
+    init = tf.reshape([a, 1, a], [1,3,1,1])
+    #init = tf.constant(np.random.normal(mean, sigma, size=(1,3,1,1)),dtype=tf.float32)
+    weights = tf.get_variable(name = 'P{}'.format(level), initializer=init, trainable=False) 
     conv = tf.nn.conv2d_transpose(input_tensor, weights, 
                                   output_shape=[batch_size,1,size+1,1], strides=[1,1,2,1], padding="VALID")
     iconv = conv[:,:,1:,:] + tf.pad(conv[:,:,0:1,:], [(0,0), (0,0), (size-1,0), (0,0)])
@@ -82,6 +88,7 @@ def diagonal(input_tensor, level, level_prime):
     D = tf.tile([0,1],[size],name='D{}'.format(level))
     D = tf.cast(D, tf.float32)
     c = tf.Variable(0.5*2**(level_prime),name='x{}'.format(level), trainable=True)
+    #c = tf.clip_by_value(c, 0, 50)
     D = c*D
     D = tf.expand_dims(tf.expand_dims(tf.expand_dims(D, 1), 0),0)
     Db = D * input_tensor
@@ -140,10 +147,10 @@ output = tf.Print(output_u_, [output_u_])
 
 loss = tf.losses.mean_squared_error(output_u_, u_)
 
-hessian = tf.hessians(loss, tf.trainable_variables())
-hessian = condense_hessian(hessian)
+#hessian = tf.hessians(loss, tf.trainable_variables())
+#hessian = condense_hessian(hessian)
 
-
+#optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate_placeholder)
 optimizer = tf.train.MomentumOptimizer(learning_rate=learning_rate_placeholder, momentum=0.9, use_nesterov=True)
 train = optimizer.minimize(loss)
 
@@ -178,6 +185,7 @@ def network_training():
                 batch_x = b_vals[i:i+batch_size,:,:]
                 batch_y = actual_u_outputs[i:i+batch_size,:,:]
                 sess.run(train, {b: batch_x.astype(np.float32), u_: batch_y.astype(np.float32), learning_rate_placeholder: learning_rate_prime})
+                #sess.run(clip_op)
             error = sess.run(loss, {b: np.array(b_vals), u_: np.array(actual_u_outputs), learning_rate_placeholder: learning_rate_prime})
             print('epoch # ', e+shift, 'training_error =', error)
             if math.isnan(error):
@@ -185,16 +193,16 @@ def network_training():
             #print ('output_u_', sess.run(output_u_, {b: np.array(b_vals), u_: np.array(actual_u_outputs), learning_rate_placeholder: learning_rate}))
             loss_plt[e+shift] = error
             epoch[e+shift] = e+shift
-            learning_rate_prime = learning_rate if (error_prime < error or error > 300) else (learning_rate*10)
-            learning_rate_prime = learning_rate_prime if (error_prime < error or error > 50) else (learning_rate_prime*100)
-            learning_rate_prime = learning_rate_prime if (error_prime < error or error > 3) else (learning_rate_prime*10)
-            learning_rate_prime = learning_rate_prime if (error_prime < error or error > 0.05) else (learning_rate_prime*100)
+            #learning_rate_prime = learning_rate if (error_prime < error or error > 100) else (learning_rate*10)
+            #learning_rate_prime = learning_rate_prime if (error_prime < error or error > 50) else (learning_rate_prime*100)
+            #learning_rate_prime = learning_rate_prime if (error_prime < error or error > 1) else (learning_rate_prime*10)
+            #learning_rate_prime = learning_rate_prime if (error_prime < error or error > 0.05) else (learning_rate_prime*100)
             #learning_rate_prime = learning_rate_prime if (error_prime < error or error > 0.01) else (learning_rate_prime*10)
             error_prime = error
             
-            hess = sess.run(hessian, {b: batch_x.astype(np.float32), u_: batch_y.astype(np.float32), learning_rate_placeholder: learning_rate_prime})
-            hess_cond_num = cond_num(hess)
-            print("hessian = %s" % hess_cond_num)
+            #hess = sess.run(hessian, {b: batch_x.astype(np.float32), u_: batch_y.astype(np.float32), learning_rate_placeholder: learning_rate_prime})
+            #hess_cond_num = cond_num(hess)
+            #print("hessian = %s" % hess_cond_num)
             
         #save_path = saver.save(sess, "/tmp/model.ckpt")
         #print("Model saved in path: %s" % save_path)
@@ -207,8 +215,8 @@ def network_training():
             #print ('var name = ', var.name,' values = ', var_val)
             converged_vars['{}'.format(var.name)]= var_val
             j+=1
-        #print ('initial params = {}'.format(init_vars))
-        #print ('converged params = {}'.format(converged_vars))
+        print ('initial params = {}'.format(init_vars))
+        print ('converged params = {}'.format(converged_vars))
         #print('epoch # ', e+shift, 'training_error =', error)
     plt.plot(epoch,loss_plt)
     plt.title("Loss Plot")
