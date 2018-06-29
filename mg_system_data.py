@@ -22,7 +22,7 @@ def Laplacian(n, stencil=[-1, 2, -1], periodic=True):
         A[-1,0] += stencil[2]
     return A
 
-def Helmoltz(n,k):
+def Helmholtz(n,k):
     return Laplacian(n)-numpy.identity(n)*k
 
 def gen_data(gridsize, n, dim, equation): #input is number of training/testing samples desired, matrix size of A is gridsize x gridsize
@@ -30,8 +30,8 @@ def gen_data(gridsize, n, dim, equation): #input is number of training/testing s
     solset = []
     if (equation == "laplacian"):
         A = Laplacian(gridsize)
-    elif (equation == "helmoltz"):
-        A = Helmoltz(gridsize, k=0.4)
+    elif (equation == "helmholtz"):
+        A = Helmholtz(gridsize, k=0.4)
     else:
         raise RuntimeError('Not such equation {}, choose either laplacian or helmoltz'.format(equation))
     #A_pinv = numpy.linalg.pinv(A)
