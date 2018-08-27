@@ -23,9 +23,9 @@ def Laplacian(n, stencil=[-1, 2, -1], periodic=True):
     return A
 
 def Helmholtz(n,k):
-    return Laplacian(n)-numpy.identity(n)*k
+    return Laplacian(n)-numpy.identity(n)*k**2
 
-def gen_data(gridsize, n, dim, equation): #input is number of training/testing samples desired, matrix size of A is gridsize x gridsize
+def gen_data(gridsize, n, dim, equation, t): #input is number of training/testing samples desired, matrix size of A is gridsize x gridsize
     dataset = []
     solset = []
     if (equation == "laplacian"):
@@ -43,16 +43,23 @@ def gen_data(gridsize, n, dim, equation): #input is number of training/testing s
             #for now will let gridsize be 2x2 for getting started
             #u = numpy.random.random((gridsize,1))
            # u = numpy.random.uniform(low=-10, high=10, size=(gridsize,1)) #does range matter? possibily the larger the range, the easier for network?
-        numpy.random.seed(_)
+        numpy.random.seed(_+t)
         u = numpy.random.rand(gridsize)
         u = u - numpy.mean(u)   
        # u_test = [1]*gridsize #FOR TEST OF AI=A FEB12 707PM
         #u = u_test      
         #print ('u = ', u)
+#        if (equation == "helmholtz"):
+##            c = [0]*(n-2)
+##            a = [-1,1]
+##            b = numpy.append(a, c)
+#            b = [-1,1,0,0,0,0,0,0]
+#        else:
         b = A @ u
         #print ('b = ', b)
         dataset.append(b)
         solset.append(u)
+        #print (dataset)
     dataset = numpy.reshape(numpy.array(dataset),[n,1,gridsize,1])
     solset = numpy.reshape(numpy.array(solset),[n,1,gridsize,1])
         # if (k == 1): #randomly generate tridiagonal matrix? maybe should leave as 2,-1, so on and just random x vector
@@ -76,5 +83,5 @@ def AI_data(gridsize,n,dim):
     I = numpy.reshape(numpy.array(solset),[n,1,gridsize,1])
     return A, I
 
-#print (gen_data(8,5,1,"helmoltz")) #shape is (n, gridsize, 1)
+#print (gen_data(8,1,1,"helmholtz",8)[0]) #shape is (n, gridsize, 1)
 #print (AI_data(6,3,1))
