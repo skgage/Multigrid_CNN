@@ -24,41 +24,42 @@ import sys
 
 #-------------Global Variables ----------------------
 
-learning_rate = 1e-4
-level = 2
+learning_rate = 1e-13
+level = 9
 level_prime = 0
 batch_size = 10
-num_data= 100
-gridsize =  8
-epoch_num = 100
+num_data= 500
+gridsize =  1024
+epoch_num = 250
 num_batch = 1
 dim = 1 #number of dimensions 
 mean = np.reshape([0.5, 1, 0.5], [1,3,1,1])
-sigma = 0.0
-equation = 'laplacian'
+sigma = 1.0
+equation = 'helmholtz'
 #----------------------------------------------------
 #-----------------------------------------------------
 
+def initialize_weights(size, mean, sigma):
+    if sigma == 0:
+        return tf.random_normal(size, mean, sigma)
+    else:
+        a = tf.random_normal(size, mean, sigma)
+        init = a/(tf.norm(a-mean)/sigma)
+        return init
 
 #--------------Model ----------------------------------------------
+        
 def conv_restrict(input_tensor, level, level_prime):
     batch_size = tf.shape(input_tensor)[0]
     size = int(gridsize/(2**level_prime))
     #size = tf.shape(input_tensor)[2]
     a  = tf.gather(input_tensor, [size-1], axis=2)
     input_tensor = tf.concat([a,input_tensor], axis=2)
-    a = tf.random_normal((1,3,1,1),mean, sigma)
-    #print ('a = {}'.format(a))
-    init = a/(tf.norm(a)/sigma)
-    #init = tf.constant((a/(np.linalg.norm(a)/sigma)),dtype=tf.float32)
-    #init = np.random.normal(mean, sigma, size=(1,3,1,1))
-    #weights = tf.get_variable(name='R{}'.format(level),shape=[1,3,1,1], initializer=init) 
-    #b = sigma*np.random.rand()+0.5
-    #a = tf.Variable(b, name='Re{}'.format(level),trainable=True)
-    #init = tf.reshape([a, 1, a], [1,3,1,1])
-    #with tf.variable_scope('scope', reuse = tf.AUTO_REUSE ):
-    weights = tf.get_variable(name='R{}'.format(level),initializer=init, trainable=True) 
-    conv = tf.nn.conv2d(input_tensor, weights, strides=[1,1,2,1], padding="VALID")
+    init = initialize_weights((1,3,1,1), mean, sigma)
+    weights = tf.get_variable(name='R{}'.format(level),
+                              initializer=init, trainable=True) 
+    conv = tf.nn.conv2d(input_tensor, weights, 
+                        strides=[1,1,2,1], padding="VALID")
     conv = tf.reshape(conv, [batch_size,1, int(size/2), 1])
     return conv
 
@@ -66,19 +67,14 @@ def conv_restrict(input_tensor, level, level_prime):
 def conv_prolong(input_tensor, level, level_prime):
     batch_size = tf.shape(input_tensor)[0]
     size = int(gridsize/(2**level_prime))
-    #size = tf.shape(input_tensor)[2]
-    #b = sigma*np.random.rand()+0.5
-    #a = tf.Variable(b, name='Pr{}'.format(level),trainable=True)
-    #init = tf.reshape([a, 1, a], [1,3,1,1])
-    #a = np.random.normal(mean, sigma, size=(1,3,1,1))
-    a = tf.random_normal((1,3,1,1),mean, sigma)
-    init = a/(tf.norm(a)/sigma)
-    #init = tf.constant((a/(np.linalg.norm(a)/sigma)),dtype=tf.float32)
-    #with tf.variable_scope('scope', reuse = tf.AUTO_REUSE ):
-    weights = tf.get_variable(name = 'P{}'.format(level), initializer=init, trainable=True) 
+    init = initialize_weights((1,3,1,1), mean, sigma)
+    weights = tf.get_variable(name = 'P{}'.format(level), 
+                              initializer=init, trainable=True) 
     conv = tf.nn.conv2d_transpose(input_tensor, weights, 
-                                  output_shape=[batch_size,1,size+1,1], strides=[1,1,2,1], padding="VALID")
-    iconv = conv[:,:,1:,:] + tf.pad(conv[:,:,0:1,:], [(0,0), (0,0), (size-1,0), (0,0)])
+        output_shape=[batch_size,1,size+1,1], 
+        strides=[1,1,2,1], padding="VALID")
+    iconv = conv[:,:,1:,:] + tf.pad(conv[:,:,0:1,:], 
+                [(0,0), (0,0), (size-1,0), (0,0)])
     return tf.reshape(iconv, (batch_size,1,size,1))
 
 def inverse_layer(input_tensor, level, level_prime):
@@ -87,8 +83,9 @@ def inverse_layer(input_tensor, level, level_prime):
     mean = np.array([[ 0.5, -0.5],[-0.5,  0.5]])*(2**(level_prime-2))
     #a = np.random.normal(mean, sigma, size=(2,2))
     #init = tf.constant((a/(np.linalg.norm(a)/sigma)),dtype=tf.float32)
-    a = tf.random_normal((2,2),mean, sigma)
-    init = a/(tf.norm(a)/sigma)
+    #a = tf.random_normal((2,2),mean, sigma)
+    #init = a/(tf.norm(a)/sigma)
+    init = initialize_weights((2,2), mean, sigma)
     #init = tf.constant(np.random.normal(mean, sigma, size=(2,2)),dtype=tf.float32)
     #init = mean.astype(np.float32)
     #with tf.variable_scope('scope', reuse = tf.AUTO_REUSE ):
@@ -191,7 +188,7 @@ def network_training():
     shift = 0
     for n in range(num_batch):
         b_vals, actual_u_outputs = mg_system_data.gen_data(gridsize, int(num_data*4/5), dim, equation, 0)
-        test_b_vals, test_actual_u_outputs = mg_system_data.gen_data(gridsize, int(num_data), dim, equation, num_data)
+        test_b_vals, test_actual_u_outputs = mg_system_data.gen_data(gridsize, int(num_data/5), dim, equation, num_data)
         #print ('b_vals {}, training actual_u_outputs {}, test_b_vals {}, test_actual_u_outputs {}'.format(b_vals, actual_u_outputs, test_b_vals, test_actual_u_outputs))
         #sess.run(reset, {b: b_vals})
         init_vars = {}
@@ -219,12 +216,12 @@ def network_training():
             training_loss_plt[e+shift] = training_error
             testing_loss_plt[e+shift] = testing_error
             epoch[e+shift] = e+shift
-#            learning_rate_prime = learning_rate if (error_prime < training_error or training_error > 40000000) else (learning_rate*100)
-#            learning_rate_prime = learning_rate_prime if (error_prime < training_error or training_error > 10000000) else (learning_rate_prime*100)
-#            learning_rate_prime = learning_rate_prime if (error_prime < training_error or training_error > 50000) else (learning_rate_prime*100)
-#            learning_rate_prime = learning_rate_prime if (error_prime < training_error or training_error > 3) else (learning_rate_prime*1000)
-#            learning_rate_prime = learning_rate_prime if (error_prime < training_error or training_error > 1) else (learning_rate_prime*100)
-#            learning_rate_prime = learning_rate_prime if (error_prime < training_error or training_error > 0.06) else (learning_rate_prime*10)
+            learning_rate_prime = learning_rate if (error_prime < training_error or training_error > 40000000) else (learning_rate*100)
+            learning_rate_prime = learning_rate_prime if (error_prime < training_error or training_error > 10000000) else (learning_rate_prime*100)
+            learning_rate_prime = learning_rate_prime if (error_prime < training_error or training_error > 50000) else (learning_rate_prime*100)
+            learning_rate_prime = learning_rate_prime if (error_prime < training_error or training_error > 5) else (learning_rate_prime*1000)
+            learning_rate_prime = learning_rate_prime if (error_prime < training_error or training_error > 1) else (learning_rate_prime*100)
+            learning_rate_prime = learning_rate_prime if (error_prime < training_error or training_error > 0.06) else (learning_rate_prime*10)
             #learning_rate_prime = learning_rate_prime if (error_prime < error or error > 0.035) else (learning_rate_prime*5)
             error_prime = training_error
             
@@ -246,16 +243,77 @@ def network_training():
         #print ('initial params = {}'.format(init_vars))
         #print ('converged params = {}'.format(converged_vars))
         #print('epoch # ', e+shift, 'training_error =', error)
-    plt.plot(epoch,training_loss_plt,label='training error')
-    plt.plot(epoch, testing_loss_plt,label='validation error')
-    plt.title("Loss Plot")
-    plt.xlabel("Cumulative Epoch")
-    plt.ylabel("Mean squared error")
-    plt.yscale('log')
+#    plt.plot(epoch,training_loss_plt,label='training error')
+#    plt.plot(epoch, testing_loss_plt,label='validation error')
+#    plt.title("Loss Plot")
+#    plt.set_ylabel('distance from convergence')
+#    plt.xlabel("Cumulative Epoch")
+#    plt.ylabel("Mean squared error")
+#    plt.yscale('log')
+    
+#    fig, ax1 = plt.subplots()
+#
+#    color1 = 'tab:red'
+#    color2 = 'tab:blue'
+#    ax1.set_xlabel('Cumulative Epoch')
+#    ax1.set_ylabel('Mean squared error', color=color1)
+#    ax1.semilogy(epoch, training_loss_plt, color=color1, label='training error')
+#    ax1.semilogy(epoch, testing_loss_plt, color=color2, label='testing error', linestyle='dashed')
+#    ax1.tick_params(axis='y', labelcolor=color1)
+#    ax1.legend(loc=1)
+#    ax1.set_title('Loss Plot')
+#    
+#    ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+#    
+#    color1 = 'tab:green'
+#    color2 = 'tab:purple'
+#    ax2.set_ylabel('distance to converged point', color=color2)  # we already handled the x-label with ax1
+#    ax2.semilogy(epoch, np.array(training_loss_plt) - 0.02, color=color1, label = 'distance to covergence point')
+#    ax2.tick_params(axis='y', labelcolor=color2)
+#    ax2.legend(loc=5)
+#    
+#    fig.tight_layout()  # otherwise the right y-label is slightly clipped
     #plt.legend()
     #plt.show()
+    
+    
+#    plt.show()
+#    print ('soluton vector {}'.format(sess.run(output_u_, {b: np.array(b_vals), u_: np.array(actual_u_outputs), learning_rate_placeholder: learning_rate_prime})))
     sess.close()
-    return training_error #converged_vars, init_vars, epoch, training_loss_plt 
+    return training_error, epoch, training_loss_plt, testing_loss_plt #converged_vars, init_vars, epoch, training_loss_plt 
 
+d = {}
+for i in range(2):
+    training_error, epoch, training_loss_plt, testing_loss_plt = network_training()
+    d["trial" + str(i)] = [training_error, epoch, training_loss_plt, testing_loss_plt]
+fig, ax1 = plt.subplots()
 
-network_training()
+color1 = 'tab:red'
+color2 = 'tab:blue'
+color3 = 'tab:pink'
+color4 = 'tab:orange'
+ax1.set_xlabel('Cumulative Epoch')
+ax1.set_ylabel('Mean squared error', color=color1)
+ax1.semilogy(d["trial0"][1], d["trial0"][2], color=color1, label='training error trial 0')
+ax1.semilogy(d["trial0"][1], d["trial0"][3], color=color2, label='testing error trial 0', linestyle='dashed')
+ax1.semilogy(d["trial0"][1], d["trial1"][2], color=color3, label='training error trial 1')
+ax1.semilogy(d["trial0"][1], d["trial1"][3], color=color4, label='testing error trial 1', linestyle='dashed')
+
+ax1.tick_params(axis='y', labelcolor=color1)
+ax1.legend(loc=1)
+ax1.set_title('Loss Plot')
+    
+ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+    
+color1 = 'tab:green'
+color2 = 'tab:purple'
+color3 = 'tab:purple'
+ax2.set_ylabel('distance to converged point', color=color2)  # we already handled the x-label with ax1
+ax2.semilogy(epoch, np.array(d["trial0"][2]) - 0.01, color=color1, label = 'distance to covergence point trial 0')
+ax2.semilogy(epoch, np.array(d["trial1"][2]) - 0.01, color=color3, label = 'distance to covergence point trial 1')
+
+ax2.tick_params(axis='y', labelcolor=color2)
+ax2.legend(loc=5)
+
+fig.tight_layout()  # otherwise the right y-label is slightly clipped
+plt.show()
